@@ -1,0 +1,13 @@
+CompileFlags:
+  Add: 
+    - -std=c++17
+    - -Wall
+    - -Wextra
+  Remove:
+    - -W*
+    - -m*
+    - -f*
+Diagnostics:
+  UnusedIncludes: Relaxed
+  MissingIncludes: Relaxed
+
