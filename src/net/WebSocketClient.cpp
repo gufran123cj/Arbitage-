@@ -48,7 +48,6 @@ void WebSocketClient::stop() {
     if (client_thread_.joinable()) {
         client_thread_.join();
     }
-    LOG_INFO("WebSocket client stopped");
 }
 
 void WebSocketClient::setUpdateQueue(
@@ -59,10 +58,6 @@ void WebSocketClient::setUpdateQueue(
 
 void WebSocketClient::clientLoop() {
     LOG_INFO("WebSocketClient loop started");
-    
-    // Build WebSocket URL
-    std::string ws_url = buildWebSocketUrl();
-    LOG_INFO("WebSocket URL: " + ws_url);
     LOG_INFO("Using periodic snapshot refresh from Binance REST API (every 5 seconds)");
     
     // Track last snapshot refresh time
@@ -91,12 +86,24 @@ void WebSocketClient::clientLoop() {
                                     update_queue_->push(update);
                                     success_count++;
                                     
-                                    // Log first bid/ask prices for ARB pairs (to monitor real prices)
-                                    if (symbol.find("ARB/") == 0 && !update.bids.empty() && !update.asks.empty()) {
-                                        LOG_INFO("Snapshot: " + symbol + 
-                                            " Bid: " + std::to_string(update.bids[0].price) + 
-                                            " Ask: " + std::to_string(update.asks[0].price) +
-                                            " (Spread: " + std::to_string((update.asks[0].price - update.bids[0].price) / update.bids[0].price * 100.0) + "%)");
+                                    // Log market data to file for all pairs
+                                    if (!update.bids.empty() && !update.asks.empty()) {
+                                        Logger::logMarketData(
+                                            symbol,
+                                            update.bids[0].price,
+                                            update.asks[0].price,
+                                            update.bids[0].quantity,
+                                            update.asks[0].quantity
+                                        );
+                                        
+                                        // Also log to console for ARB pairs
+                                        if (symbol.find("ARB/") == 0) {
+                                            double spread = ((update.asks[0].price - update.bids[0].price) / update.bids[0].price) * 100.0;
+                                            LOG_INFO("Snapshot: " + symbol + 
+                                                " Bid: " + std::to_string(update.bids[0].price) + 
+                                                " Ask: " + std::to_string(update.asks[0].price) +
+                                                " (Spread: " + std::to_string(spread) + "%)");
+                                        }
                                     }
                                 }
                             } else {
@@ -265,16 +272,22 @@ std::string WebSocketClient::httpGet(const std::string& url) {
         WINHTTP_NO_PROXY_BYPASS, 0);
     
     if (!hSession) {
-        LOG_ERROR("Failed to open WinHTTP session");
+        DWORD error = GetLastError();
+        LOG_ERROR("Failed to open WinHTTP session (Error: " + std::to_string(error) + ")");
         return result;
     }
+    
+    // Set timeouts (30 seconds for connect, send, receive)
+    DWORD timeout = 30000; // 30 seconds in milliseconds
+    WinHttpSetTimeouts(hSession, timeout, timeout, timeout, timeout);
     
     // Connect to host (HTTPS uses port 443)
     HINTERNET hConnect = WinHttpConnect(hSession, host_w.c_str(), INTERNET_DEFAULT_HTTPS_PORT, 0);
     
     if (!hConnect) {
+        DWORD error = GetLastError();
         WinHttpCloseHandle(hSession);
-        LOG_ERROR("Failed to connect to host: " + host);
+        LOG_ERROR("Failed to connect to host: " + host + " (Error: " + std::to_string(error) + ")");
         return result;
     }
     
@@ -283,28 +296,31 @@ std::string WebSocketClient::httpGet(const std::string& url) {
         NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
     
     if (!hRequest) {
+        DWORD error = GetLastError();
         WinHttpCloseHandle(hConnect);
         WinHttpCloseHandle(hSession);
-        LOG_ERROR("Failed to open request");
+        LOG_ERROR("Failed to open request (Error: " + std::to_string(error) + ")");
         return result;
     }
     
     // Send request
     if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
         WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
+        DWORD error = GetLastError();
         WinHttpCloseHandle(hRequest);
         WinHttpCloseHandle(hConnect);
         WinHttpCloseHandle(hSession);
-        LOG_ERROR("Failed to send request");
+        LOG_ERROR("Failed to send request to " + host + path + " (Error: " + std::to_string(error) + ")");
         return result;
     }
     
     // Receive response
     if (!WinHttpReceiveResponse(hRequest, NULL)) {
+        DWORD error = GetLastError();
         WinHttpCloseHandle(hRequest);
         WinHttpCloseHandle(hConnect);
         WinHttpCloseHandle(hSession);
-        LOG_ERROR("Failed to receive response");
+        LOG_ERROR("Failed to receive response from " + host + path + " (Error: " + std::to_string(error) + ")");
         return result;
     }
     
@@ -377,6 +393,11 @@ MarketUpdate WebSocketClient::parsePartialBookDepthJson(const std::string& symbo
     MarketUpdate update;
     update.symbol = symbol;
     update.is_snapshot = true;
+    
+    // Set timestamp (current time in milliseconds)
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    update.timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
     
     // Simple JSON parsing for Binance depth response
     // Format: {"lastUpdateId":123,"bids":[["price","qty"],...],"asks":[["price","qty"],...]}

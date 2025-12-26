@@ -1,10 +1,12 @@
 #include "OrderBook.hpp"
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 
 constexpr double EPSILON = 1e-9;
 
 OrderBook::OrderBook(const std::string& symbol) : symbol_(symbol) {
+    top_of_book_.last_update_ms = 0;
 }
 
 void OrderBook::applySnapshot(
@@ -16,6 +18,7 @@ void OrderBook::applySnapshot(
     asks_ = asks;
     sortLevels(bids_, true);
     sortLevels(asks_, false);
+    updateTopOfBook();
 }
 
 void OrderBook::applyUpdate(
@@ -27,6 +30,89 @@ void OrderBook::applyUpdate(
     updateLevels(asks_, asks);
     sortLevels(bids_, true);
     sortLevels(asks_, false);
+    updateTopOfBook();
+}
+
+void OrderBook::updateTop(
+    double bid_price, double bid_qty,
+    double ask_price, double ask_qty,
+    uint64_t timestamp_ms) {
+    
+    std::lock_guard<std::mutex> lock(mutex_);
+    top_of_book_.best_bid_price = bid_price;
+    top_of_book_.best_bid_qty = bid_qty;
+    top_of_book_.best_ask_price = ask_price;
+    top_of_book_.best_ask_qty = ask_qty;
+    top_of_book_.last_update_ms = (timestamp_ms > 0) ? timestamp_ms : getCurrentTimeMs();
+    
+    // Also update vectors if needed
+    if (!bids_.empty() && std::abs(bids_[0].price - bid_price) < EPSILON) {
+        bids_[0].quantity = bid_qty;
+    } else if (bid_price > 0.0) {
+        bids_.insert(bids_.begin(), PriceLevel(bid_price, bid_qty));
+        sortLevels(bids_, true);
+    }
+    
+    if (!asks_.empty() && std::abs(asks_[0].price - ask_price) < EPSILON) {
+        asks_[0].quantity = ask_qty;
+    } else if (ask_price > 0.0) {
+        asks_.insert(asks_.begin(), PriceLevel(ask_price, ask_qty));
+        sortLevels(asks_, false);
+    }
+}
+
+TopOfBook OrderBook::getTop() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return top_of_book_;
+}
+
+double OrderBook::getBestBidQty() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (bids_.empty()) {
+        return 0.0;
+    }
+    return bids_[0].quantity;
+}
+
+double OrderBook::getBestAskQty() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (asks_.empty()) {
+        return 0.0;
+    }
+    return asks_[0].quantity;
+}
+
+uint64_t OrderBook::getLastUpdateMs() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return top_of_book_.last_update_ms;
+}
+
+bool OrderBook::isFresh(uint64_t max_age_ms) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (top_of_book_.last_update_ms == 0) {
+        return false;
+    }
+    uint64_t now_ms = getCurrentTimeMs();
+    uint64_t age_ms = (now_ms > top_of_book_.last_update_ms) 
+        ? (now_ms - top_of_book_.last_update_ms) 
+        : 0;
+    return age_ms <= max_age_ms;
+}
+
+void OrderBook::updateTopOfBook() {
+    if (!bids_.empty() && !asks_.empty()) {
+        top_of_book_.best_bid_price = bids_[0].price;
+        top_of_book_.best_bid_qty = bids_[0].quantity;
+        top_of_book_.best_ask_price = asks_[0].price;
+        top_of_book_.best_ask_qty = asks_[0].quantity;
+        top_of_book_.last_update_ms = getCurrentTimeMs();
+    }
+}
+
+uint64_t OrderBook::getCurrentTimeMs() {
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 }
 
 double OrderBook::getBestBid() const {

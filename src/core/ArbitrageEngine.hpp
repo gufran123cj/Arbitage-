@@ -64,5 +64,8 @@ private:
     
     std::string formatPriceLevels(
         const TradePath& path) const;
+    
+    // Adım 5: Tek rota testi
+    void testSingleRoute() const;
 };
 

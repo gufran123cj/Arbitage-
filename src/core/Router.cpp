@@ -78,6 +78,7 @@ std::vector<TradePath> Router::generateTriangularPaths(
     
     std::string quote = arb_pair.substr(slash_pos + 1);
     
+    // PDF'ye göre: ARB/BTC → BTC/USDT (2-leg, triangular değil)
     if (quote == "BTC" || quote == "ETH") {
         std::string intermediate = quote + "/USDT";
         TradePath path;
@@ -88,17 +89,21 @@ std::vector<TradePath> Router::generateTriangularPaths(
         return paths;
     }
     
+    // PDF'ye göre triangular arbitrage:
+    // "Buy ARB with EUR → Sell ARB for BTC → Sell BTC for USDT"
+    // Yani: ARB/EUR → ARB/BTC → BTC/USDT
     std::vector<std::string> bridges = {"BTC", "ETH"};
     
     for (const auto& bridge : bridges) {
-        std::string bridge_pair = quote + "/" + bridge;
-        std::string final_pair = bridge + "/USDT";
+        // Triangular path: ARB/QUOTE → ARB/BRIDGE → BRIDGE/USDT
+        std::string arb_bridge_pair = "ARB/" + bridge;
+        std::string bridge_usdt_pair = bridge + "/USDT";
         
         TradePath path;
-        path.steps = {arb_pair, bridge_pair, final_pair};
+        path.steps = {arb_pair, arb_bridge_pair, bridge_usdt_pair};
         path.is_buy = {true, false, false};
-        path.description = "Buy " + arb_pair + " -> Sell " + bridge_pair 
-                          + " -> Sell " + final_pair;
+        path.description = "Buy " + arb_pair + " -> Sell " + arb_bridge_pair 
+                          + " -> Sell " + bridge_usdt_pair;
         paths.push_back(path);
     }
     
