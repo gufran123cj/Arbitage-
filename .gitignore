@@ -1,6 +1,10 @@
 # Build directories
 build/
+out/
 cmake-build-*/
+
+# Visual Studio files
+.vs/
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
@@ -10,26 +14,26 @@ cmake-build-*/
 *.userosscache
 *.sln.docstates
 
-# Compiled files
-*.exe
-*.dll
-*.so
-*.dylib
-*.a
-*.lib
-*.o
-*.obj
-
 # CMake
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
-compile_commands.json
 *.cmake
 !CMakeLists.txt
 
+# Compiled files
+*.exe
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.pdb
+*.ilk
+*.exp
+*.log
+
 # IDE
-.vs/
 .vscode/
 .idea/
 *.swp
@@ -40,6 +44,8 @@ compile_commands.json
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Temporary files
+*.tmp
+*.bak
+*.cache
 
