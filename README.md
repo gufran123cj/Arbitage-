@@ -25,6 +25,7 @@ This project implements a real-time arbitrage detection engine that:
 - **Boost**: Version 1.84.0 or higher
   - Components: `boost-beast`, `boost-system`
 - **OpenSSL**: Version 3.6.0 or higher
+- **FTXUI**: Latest version (Terminal UI library)
 
 ### C++ Standard
 
@@ -32,7 +33,42 @@ This project implements a real-time arbitrage detection engine that:
 
 ## Installation
 
-### Step 1: Install vcpkg
+### Automatic Setup (Recommended)
+
+Run the setup script to automatically install all dependencies and configure the project:
+
+```powershell
+# Clone the repository (if not already cloned)
+git clone <repository-url>
+cd <project-directory>
+
+# Run setup script
+.\setup.ps1
+```
+
+The script will automatically:
+- Check for Git and CMake (required tools)
+- Install vcpkg from GitHub (if not already installed)
+- Install all required dependencies via vcpkg:
+  - Boost.Beast (WebSocket client)
+  - Boost.System (system error handling)
+  - OpenSSL (SSL/TLS support)
+  - FTXUI (Terminal UI library)
+- Configure CMake with vcpkg toolchain
+- Create build directory
+
+**Note**: First-time installation may take 10-15 minutes.
+
+**Custom vcpkg path**: If vcpkg is installed at a different location, you can specify it:
+```powershell
+.\setup.ps1 -VcpkgPath "C:\path\to\vcpkg"
+```
+
+### Manual Setup
+
+If you prefer manual installation:
+
+#### Step 1: Install vcpkg
 
 If you don't have vcpkg installed:
 
@@ -43,33 +79,34 @@ cd D:\vcpkg
 .\vcpkg integrate install
 ```
 
-### Step 2: Install Dependencies
+#### Step 2: Install Dependencies
 
 Install required libraries using vcpkg:
 
 ```powershell
-D:\vcpkg\vcpkg.exe install boost-beast boost-system openssl:x64-windows
+<vcpkg-path>\vcpkg.exe install boost-beast:x64-windows boost-system:x64-windows openssl:x64-windows ftxui:x64-windows
 ```
 
 This will install:
 - Boost.Beast (WebSocket client library)
 - Boost.System (system error handling)
 - OpenSSL (SSL/TLS support)
+- FTXUI (Terminal UI library)
 
 **Note**: Installation may take 10-15 minutes on first run.
 
-### Step 3: Clone and Build Project
+#### Step 3: Clone and Build Project
 
 ```powershell
 # Navigate to project directory
-cd D:\IDEA\Case_Study\C++
+cd <project-directory>
 
 # Create build directory
 mkdir build
 cd build
 
 # Configure CMake with vcpkg toolchain
-cmake .. -DCMAKE_TOOLCHAIN_FILE=D:\vcpkg\scripts\buildsystems\vcpkg.cmake
+cmake .. -DCMAKE_TOOLCHAIN_FILE=<vcpkg-path>\scripts\buildsystems\vcpkg.cmake
 
 # Build the project
 cmake --build . --config Debug
@@ -98,20 +135,42 @@ C++/
 
 ## Architecture
 
-### WebSocketClient
+### Components
 
-The `WebSocketClient` class handles:
-- Secure WebSocket connections to Binance API
+#### WebSocketClient
+Handles secure WebSocket connections to Binance API:
 - SSL/TLS handshake and certificate validation
 - Real-time market data reception (bookTicker stream)
 - Thread-safe data handling
-- Automatic reconnection logic
+- Automatic reconnection with exponential backoff
+- Connects to `wss://stream.binance.com:443/ws/<symbol>@bookTicker`
 
-**Current Implementation:**
-- Connects to Binance WebSocket API (`wss://stream.binance.com:443`)
-- Subscribes to `bookTicker` stream for a given symbol
-- Receives real-time bid/ask price updates
-- Parses JSON messages and extracts market data
+#### MarketState
+Centralized thread-safe storage for all order book data:
+- Manages `OrderBook` instances for each symbol
+- Provides thread-safe access to market data
+- Tracks real-time bid/ask prices and quantities
+
+#### OrderBook
+Thread-safe order book representation:
+- Stores best bid/ask prices and quantities
+- Tracks timestamp for data freshness
+- Provides snapshot interface for reading
+
+#### ArbitrageDetector
+Core arbitrage detection engine:
+- Calculates implied USDT prices across routes
+- Detects 2-leg, multi-leg, and direct comparison opportunities
+- Configurable profit threshold (default: 0.10%)
+- Supports all ARB trading pairs
+
+#### ArbitrageUI
+Interactive terminal UI using FTXUI:
+- Real-time market data visualization
+- Price change indicators (green/red/white)
+- Route status monitoring
+- Performance statistics
+- Mouse wheel scrolling support
 
 ### Data Format
 
@@ -196,6 +255,10 @@ cmake --build . --config Release
 
 - **OpenSSL**: SSL/TLS cryptographic library for secure connections
 
+### FTXUI
+
+- **FTXUI**: Functional Terminal User Interface library for interactive console UI
+
 ## Troubleshooting
 
 ### CMake Cannot Find Boost
@@ -215,7 +278,7 @@ cmake --build . --config Release
 
 **Solution**:
 ```powershell
-D:\vcpkg\vcpkg.exe install openssl:x64-windows
+<vcpkg-path>\vcpkg.exe install openssl:x64-windows
 ```
 
 ### WebSocket Connection Failed
@@ -233,7 +296,7 @@ D:\vcpkg\vcpkg.exe install openssl:x64-windows
 
 **Solution**: Ensure Boost.Beast is installed via vcpkg:
 ```powershell
-D:\vcpkg\vcpkg.exe install boost-beast:x64-windows
+<vcpkg-path>\vcpkg.exe install boost-beast:x64-windows
 ```
 
 ## Development
@@ -263,18 +326,30 @@ D:\vcpkg\vcpkg.exe install boost-beast:x64-windows
 3. Follow existing code style and conventions
 4. Test with Debug build first
 
+## Implemented Features
+
+✅ **Core Functionality:**
+- OrderBook implementation for maintaining bid/ask levels
+- PriceCalculator for implied USDT price calculation
+- Router for generating arbitrage paths
+- ArbitrageEngine for opportunity detection
+- Support for all 8 ARB pairs simultaneously
+- Multi-leg arbitrage detection (3+ legs)
+- Profit threshold configuration (0.10% default)
+- Real-time WebSocket data streaming
+- Automatic reconnection with exponential backoff
+- Interactive terminal UI (FTXUI)
+- Price change visualization (green/red/white)
+- Route status monitoring
+- Performance statistics
+
 ## Future Enhancements
 
-- [ ] OrderBook implementation for maintaining bid/ask levels
-- [ ] PriceCalculator for implied USDT price calculation
-- [ ] Router for generating arbitrage paths
-- [ ] ArbitrageEngine for opportunity detection
-- [ ] ConcurrentQueue for thread-safe data exchange
-- [ ] Logger for structured logging
-- [ ] Support for all 8 ARB pairs simultaneously
-- [ ] Multi-leg arbitrage detection
-- [ ] Profit threshold configuration
-- [ ] Order book depth analysis
+- [ ] Order book depth analysis (max tradable amount calculation)
+- [ ] Structured logging system
+- [ ] Configuration file support
+- [ ] Historical data analysis
+- [ ] Performance optimization
 
 ## License
 
@@ -287,6 +362,4 @@ This project is developed for educational and research purposes.
 - [CMake Documentation](https://cmake.org/documentation/)
 - [vcpkg Documentation](https://vcpkg.io/)
 
-## Contact
 
-For questions or issues, please refer to the project documentation or create an issue in the repository.
