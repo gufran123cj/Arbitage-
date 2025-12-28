@@ -387,32 +387,6 @@ cmake --build . --config Release
 3. Follow existing code style and conventions
 4. Test with Debug build first
 
-## Implemented Features
-
-✅ **Core Functionality:**
-- OrderBook implementation for maintaining bid/ask levels
-- PriceCalculator for implied USDT price calculation
-- Router for generating arbitrage paths
-- ArbitrageEngine for opportunity detection
-- Support for all 8 ARB pairs simultaneously
-- Multi-leg arbitrage detection (3+ legs)
-- Profit threshold configuration (0.10% default)
-- Real-time WebSocket data streaming
-- Automatic reconnection with exponential backoff
-- Interactive terminal UI (FTXUI)
-- Price change visualization (green/red/white)
-- Route status monitoring
-- **Automatic JSON logging** - All detected opportunities are saved to timestamped JSON files
-- Performance statistics
-
-## Future Enhancements
-
-- [x] Order book depth analysis (max tradable amount calculation) ✅
-- [ ] Structured logging system
-- [ ] Configuration file support
-- [ ] Historical data analysis
-- [ ] Performance optimization
-
 ## License
 
 This project is developed for educational and research purposes.
