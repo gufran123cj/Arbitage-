@@ -1,4 +1,4 @@
-# Binance ARB Arbitrage Engine
+# Binance Arbitrage Engine
 
 A high-performance C++17 arbitrage detection system for Binance Spot market, specifically designed to monitor ARB (Arbitrum) trading pairs and identify profitable arbitrage opportunities in real-time.
 
