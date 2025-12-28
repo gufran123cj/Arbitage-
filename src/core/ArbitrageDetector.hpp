@@ -19,6 +19,10 @@ struct ArbitrageOpportunity {
     double other_usdt_bid; // XXX/USDT bid
     double other_usdt_ask; // XXX/USDT ask
     
+    // Order book depth analysis (bonus)
+    double max_tradable_amount;  // Maximum amount that can be traded
+    std::string max_tradable_currency;  // Currency of max_tradable_amount (e.g., "ARB", "BTC", "USDT")
+    
     bool valid;
     
     ArbitrageOpportunity()
@@ -26,6 +30,7 @@ struct ArbitrageOpportunity {
           arb_usdt_bid(0.0), arb_usdt_ask(0.0),
           arb_other_bid(0.0), arb_other_ask(0.0),
           other_usdt_bid(0.0), other_usdt_ask(0.0),
+          max_tradable_amount(0.0), max_tradable_currency(""),
           valid(false) {}
 };
 

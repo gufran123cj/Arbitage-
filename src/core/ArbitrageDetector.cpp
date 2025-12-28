@@ -160,6 +160,33 @@ std::optional<ArbitrageOpportunity> ArbitrageDetector::checkRouteDirection1(
         return std::nullopt;
     }
     
+    // Calculate max tradable amount (order book depth analysis)
+    // Direction 1: Buy ARB/XXX -> Buy XXX/USDT -> Sell ARB/USDT
+    // Step 1: Buy ARB/XXX -> can buy ask_qty(ARB/XXX) ARB
+    // Step 2: Buy XXX/USDT -> need XXX, have ARB -> convert ARB to XXX
+    //         Can buy ask_qty(XXX/USDT) XXX, but limited by available ARB
+    //         Available XXX = ask_qty(ARB/XXX) * ask_price(ARB/XXX)
+    //         Can buy: min(ask_qty(XXX/USDT), available_XXX / ask_price(XXX/USDT))
+    // Step 3: Sell ARB/USDT -> can sell bid_qty(ARB/USDT) ARB, but limited by available ARB
+    
+    double step1_arb = arb_other.ask_qty;  // Can buy this much ARB from ARB/XXX
+    
+    // Convert ARB to XXX: available XXX = ARB_amount * ask_price(ARB/XXX)
+    double available_xxx = step1_arb * arb_other.ask_price;
+    double step2_xxx = std::min(other_usdt.ask_qty, available_xxx / other_usdt.ask_price);
+    
+    // Convert XXX back to ARB: available ARB = XXX_amount / ask_price(ARB/XXX)
+    // But we already have step1_arb ARB, so total ARB = step1_arb
+    double step3_arb = std::min(arb_usdt.bid_qty, step1_arb);
+    
+    // The bottleneck is the minimum of all steps
+    // Convert everything to ARB for comparison
+    double max_arb_via_step1 = step1_arb;
+    double max_arb_via_step2 = step2_xxx / arb_other.ask_price;  // Convert XXX back to ARB
+    double max_arb_via_step3 = step3_arb;
+    
+    double max_tradable_arb = std::min({max_arb_via_step1, max_arb_via_step2, max_arb_via_step3});
+    
     // Create opportunity
     ArbitrageOpportunity opp;
     opp.direction = 1;
@@ -172,6 +199,8 @@ std::optional<ArbitrageOpportunity> ArbitrageDetector::checkRouteDirection1(
     opp.arb_other_ask = arb_other.ask_price;
     opp.other_usdt_bid = other_usdt.bid_price;
     opp.other_usdt_ask = other_usdt.ask_price;
+    opp.max_tradable_amount = max_tradable_arb;
+    opp.max_tradable_currency = "ARB";
     opp.valid = true;
     
     return opp;
@@ -215,6 +244,29 @@ std::optional<ArbitrageOpportunity> ArbitrageDetector::checkRouteDirection2(
         return std::nullopt;
     }
     
+    // Calculate max tradable amount (order book depth analysis)
+    // Direction 2: Buy ARB/USDT -> Sell ARB/XXX -> Sell XXX/USDT
+    // Step 1: Buy ARB/USDT -> can buy ask_qty(ARB/USDT) ARB
+    // Step 2: Sell ARB/XXX -> can sell bid_qty(ARB/XXX) ARB, but limited by available ARB
+    //         Available ARB = ask_qty(ARB/USDT)
+    //         Can sell: min(bid_qty(ARB/XXX), available_ARB)
+    // Step 3: Sell XXX/USDT -> can sell bid_qty(XXX/USDT) XXX, but limited by available XXX
+    //         Available XXX = sold_ARB * bid_price(ARB/XXX)
+    
+    double step1_arb = arb_usdt.ask_qty;  // Can buy this much ARB from ARB/USDT
+    
+    double step2_arb = std::min(arb_other.bid_qty, step1_arb);  // Can sell this much ARB
+    double available_xxx = step2_arb * arb_other.bid_price;  // Get this much XXX
+    double step3_xxx = std::min(other_usdt.bid_qty, available_xxx);  // Can sell this much XXX
+    
+    // The bottleneck is the minimum of all steps
+    // Convert everything to ARB for comparison
+    double max_arb_via_step1 = step1_arb;
+    double max_arb_via_step2 = step2_arb;
+    double max_arb_via_step3 = step3_xxx / arb_other.bid_price;  // Convert XXX back to ARB
+    
+    double max_tradable_arb = std::min({max_arb_via_step1, max_arb_via_step2, max_arb_via_step3});
+    
     // Create opportunity
     ArbitrageOpportunity opp;
     opp.direction = 2;
@@ -227,6 +279,8 @@ std::optional<ArbitrageOpportunity> ArbitrageDetector::checkRouteDirection2(
     opp.arb_other_ask = arb_other.ask_price;
     opp.other_usdt_bid = other_usdt.bid_price;
     opp.other_usdt_ask = other_usdt.ask_price;
+    opp.max_tradable_amount = max_tradable_arb;
+    opp.max_tradable_currency = "ARB";
     opp.valid = true;
     
     return opp;
@@ -267,6 +321,21 @@ std::optional<ArbitrageOpportunity> ArbitrageDetector::checkDirectComparison(
         return std::nullopt;
     }
     
+    // Calculate max tradable amount (order book depth analysis)
+    // Direct comparison: simple 2-step trade
+    double max_tradable_arb;
+    if (use_direction1) {
+        // Direction 1: Buy ARB/STABLE -> Sell ARB/USDT
+        double step1_arb = arb_stable.ask_qty;  // Can buy this much ARB
+        double step2_arb = std::min(arb_usdt.bid_qty, step1_arb);  // Can sell this much ARB
+        max_tradable_arb = std::min(step1_arb, step2_arb);
+    } else {
+        // Direction 2: Buy ARB/USDT -> Sell ARB/STABLE
+        double step1_arb = arb_usdt.ask_qty;  // Can buy this much ARB
+        double step2_arb = std::min(arb_stable.bid_qty, step1_arb);  // Can sell this much ARB
+        max_tradable_arb = std::min(step1_arb, step2_arb);
+    }
+    
     ArbitrageOpportunity opp;
     opp.direction = use_direction1 ? 1 : 2;
     opp.route_name = arb_stable_pair + " vs ARB/USDT";
@@ -280,6 +349,8 @@ std::optional<ArbitrageOpportunity> ArbitrageDetector::checkDirectComparison(
     opp.arb_other_ask = arb_stable.ask_price;
     opp.other_usdt_bid = 0.0;  // Not applicable for direct comparison
     opp.other_usdt_ask = 0.0;  // Not applicable for direct comparison
+    opp.max_tradable_amount = max_tradable_arb;
+    opp.max_tradable_currency = "ARB";
     opp.valid = true;
     
     return opp;
@@ -419,6 +490,29 @@ std::optional<ArbitrageOpportunity> ArbitrageDetector::checkMultiLegRoute(
         return std::nullopt;
     }
     
+    // Calculate max tradable amount (order book depth analysis)
+    // Multi-leg route: Buy ARB/QUOTE -> Sell ARB/INTERMEDIATE -> Sell INTERMEDIATE/USDT
+    // Step 1: Buy ARB/QUOTE -> can buy ask_qty(ARB/QUOTE) ARB
+    // Step 2: Sell ARB/INTERMEDIATE -> can sell bid_qty(ARB/INTERMEDIATE) ARB, but limited by available ARB
+    //         Available ARB = ask_qty(ARB/QUOTE)
+    //         Can sell: min(bid_qty(ARB/INTERMEDIATE), available_ARB)
+    // Step 3: Sell INTERMEDIATE/USDT -> can sell bid_qty(INTERMEDIATE/USDT) INTERMEDIATE, but limited by available INTERMEDIATE
+    //         Available INTERMEDIATE = sold_ARB * bid_price(ARB/INTERMEDIATE)
+    
+    double step1_arb = start.ask_qty;  // Can buy this much ARB from ARB/QUOTE
+    
+    double step2_arb = std::min(intermediate.bid_qty, step1_arb);  // Can sell this much ARB
+    double available_intermediate = step2_arb * intermediate.bid_price;  // Get this much INTERMEDIATE
+    double step3_intermediate = std::min(final.bid_qty, available_intermediate);  // Can sell this much INTERMEDIATE
+    
+    // The bottleneck is the minimum of all steps
+    // Convert everything to ARB for comparison
+    double max_arb_via_step1 = step1_arb;
+    double max_arb_via_step2 = step2_arb;
+    double max_arb_via_step3 = step3_intermediate / intermediate.bid_price;  // Convert INTERMEDIATE back to ARB
+    
+    double max_tradable_arb = std::min({max_arb_via_step1, max_arb_via_step2, max_arb_via_step3});
+    
     // Create opportunity
     ArbitrageOpportunity opp;
     opp.direction = 1; // Multi-leg is always one direction
@@ -433,6 +527,8 @@ std::optional<ArbitrageOpportunity> ArbitrageDetector::checkMultiLegRoute(
     opp.arb_other_ask = intermediate.ask_price;
     opp.other_usdt_bid = final.bid_price;
     opp.other_usdt_ask = final.ask_price;
+    opp.max_tradable_amount = max_tradable_arb;
+    opp.max_tradable_currency = "ARB";
     opp.valid = true;
     
     return opp;

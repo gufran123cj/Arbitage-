@@ -93,6 +93,8 @@ struct UIState {
     std::string trade_sequence;
     std::string route_name;
     double profit_percent = 0.0;
+    double max_tradable_amount = 0.0;
+    std::string max_tradable_currency;
     
     // Route status (for each route, show current profit if any)
     struct RouteStatus {

@@ -2,6 +2,7 @@
 #include "src/core/MarketState.hpp"
 #include "src/core/ArbitrageDetector.hpp"
 #include "src/ui/ArbitrageUI.hpp"
+#include "src/util/ArbitrageLogger.hpp"
 #include "src/config/Symbols.hpp"
 #include <chrono>
 #include <thread>
@@ -39,14 +40,21 @@ int main() {
     // Create arbitrage detector with 0.10% threshold
     ArbitrageDetector detector(market_state, 0.10);
     
+    // Create logger for saving opportunities to JSON
+    ArbitrageLogger logger;
+    
     // Create and run UI
     ArbitrageUI ui(market_state, detector);
     
     // Start arbitrage checking thread
-    std::thread check_thread([&detector]() {
+    std::thread check_thread([&detector, &logger]() {
         while (true) {
             detector.incrementCheckCount();
-            detector.checkOpportunities(); // Check but UI will display
+            auto opportunity = detector.checkOpportunities();
+            if (opportunity.has_value() && opportunity.value().valid) {
+                // Log opportunity to JSON file
+                logger.logOpportunity(opportunity.value());
+            }
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     });

@@ -172,6 +172,67 @@ Interactive terminal UI using FTXUI:
 - Performance statistics
 - Mouse wheel scrolling support
 
+#### ArbitrageLogger
+Automatic JSON logging for arbitrage opportunities:
+- Saves detected opportunities to timestamped JSON files
+- Filename format: `arbitrage_YYYY-MM-DD_HH-MM-SS.json`
+- Includes complete opportunity data (route, profit, prices, max tradable amount)
+- Thread-safe logging from detection thread
+- No external JSON library dependency (manual JSON construction)
+
+## Screenshots
+
+### User Interface Overview
+
+The application provides a comprehensive terminal-based interface for monitoring arbitrage opportunities in real-time.
+
+![Market Prices and Route Status](sample_image.png)
+*Figure 1: Real-time market data display showing ARB trading pairs, cross pairs, route status, and system statistics.*
+
+![Arbitrage Detection Interface](sample_image2.png)
+*Figure 2: Detailed view of the arbitrage detection system with route monitoring and opportunity tracking.*
+
+### JSON Logging
+
+When an arbitrage opportunity is detected, the system automatically saves it to a JSON file in the project root directory. Each opportunity is saved to a separate file with a timestamped filename:
+
+**Filename Format:** `arbitrage_YYYY-MM-DD_HH-MM-SS.json`
+
+**JSON Structure:**
+```json
+{
+  "timestamp_ms": 1704067200000,
+  "timestamp": "2024-01-01 12:00:00",
+  "direction": 1,
+  "route_name": "ARB/BTC -> BTC/USDT",
+  "trade_sequence": "Buy ARB/BTC -> Buy BTC/USDT -> Sell ARB/USDT",
+  "profit_percent": 0.15,
+  "max_tradable_amount": 1234.56,
+  "max_tradable_currency": "ARB",
+  "prices": {
+    "arb_usdt_bid": 0.19360000,
+    "arb_usdt_ask": 0.19370000,
+    "arb_other_bid": 0.00000221,
+    "arb_other_ask": 0.00000222,
+    "other_usdt_bid": 87607.25,
+    "other_usdt_ask": 87607.26
+  }
+}
+```
+
+**Fields:**
+- `timestamp_ms`: Unix timestamp in milliseconds
+- `timestamp`: Human-readable timestamp
+- `direction`: Trade direction (1 or 2)
+- `route_name`: Trading route identifier
+- `trade_sequence`: Step-by-step trade sequence
+- `profit_percent`: Calculated profit percentage
+- `max_tradable_amount`: Maximum tradable amount (order book depth analysis)
+- `max_tradable_currency`: Currency of max tradable amount
+- `prices`: All relevant bid/ask prices for the opportunity
+
+**Note:** JSON files are created automatically when opportunities are detected. No manual intervention required.
+
 ### Data Format
 
 The system receives `bookTicker` messages in the following format:
@@ -341,11 +402,12 @@ cmake --build . --config Release
 - Interactive terminal UI (FTXUI)
 - Price change visualization (green/red/white)
 - Route status monitoring
+- **Automatic JSON logging** - All detected opportunities are saved to timestamped JSON files
 - Performance statistics
 
 ## Future Enhancements
 
-- [ ] Order book depth analysis (max tradable amount calculation)
+- [x] Order book depth analysis (max tradable amount calculation) ✅
 - [ ] Structured logging system
 - [ ] Configuration file support
 - [ ] Historical data analysis

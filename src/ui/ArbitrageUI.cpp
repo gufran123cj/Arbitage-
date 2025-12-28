@@ -14,7 +14,6 @@ ArbitrageUI::ArbitrageUI(MarketState& market_state, ArbitrageDetector& detector)
 void ArbitrageUI::update() {
     std::lock_guard<std::mutex> lock(ui_state_.mutex);
     
-    // Update market data for all symbols
     auto all_symbols = getAllSymbols();
     
     for (const auto& symbol : all_symbols) {
@@ -22,17 +21,13 @@ void ArbitrageUI::update() {
         SymbolData& data = ui_state_.market_data[symbol];
         
         if (snap.has_data) {
-            // Update price and track change
             data.updatePrice(snap.bid_price, snap.ask_price);
             data.has_data = true;
-            data.last_timestamp_ms = snap.timestamp_ms; // Use OrderBook's timestamp
+            data.last_timestamp_ms = snap.timestamp_ms;
         } else {
-            // Keep old data but mark as no data
             data.has_data = false;
         }
     }
-    
-    // Check for arbitrage opportunity (best one)
     auto opportunity = detector_.checkOpportunities();
     if (opportunity.has_value() && opportunity.value().valid) {
         const auto& opp = opportunity.value();
@@ -41,14 +36,13 @@ void ArbitrageUI::update() {
         ui_state_.trade_sequence = opp.trade_sequence;
         ui_state_.route_name = opp.route_name;
         ui_state_.profit_percent = opp.profit_percent;
+        ui_state_.max_tradable_amount = opp.max_tradable_amount;
+        ui_state_.max_tradable_currency = opp.max_tradable_currency;
         ui_state_.opportunities_found++;
         
-        // Update max profit
         if (opp.profit_percent > ui_state_.max_profit_found) {
             ui_state_.max_profit_found = opp.profit_percent;
         }
-        
-        // Update average profit (simple moving average)
         if (ui_state_.opportunities_found > 0) {
             ui_state_.avg_profit_found = 
                 (ui_state_.avg_profit_found * (ui_state_.opportunities_found - 1) + opp.profit_percent) 
@@ -58,7 +52,6 @@ void ArbitrageUI::update() {
         ui_state_.has_opportunity = false;
     }
     
-    // Check all routes individually for route status display
     ui_state_.route_statuses.clear();
     
     // 2-leg routes
@@ -73,7 +66,6 @@ void ArbitrageUI::update() {
         UIState::RouteStatus status;
         status.route_name = arb_pair + " -> " + cross_pair;
         
-        // Check if we have data for this route
         auto arb_snap = market_state_.get(arb_pair).snapshot();
         auto cross_snap = market_state_.get(cross_pair).snapshot();
         auto usdt_snap = market_state_.get("ARB/USDT").snapshot();
@@ -231,28 +223,21 @@ void ArbitrageUI::run() {
         }
     });
     
-    // Exit handler and scroll handler
     component |= ftxui::CatchEvent([this, &running, &screen](ftxui::Event event) {
-        // Exit on 'q' or Escape
         if (event == ftxui::Event::Character('q') || event == ftxui::Event::Escape) {
             running = false;
             screen.Exit();
             return true;
         }
         
-        // Mouse wheel scrolling - manuel implementasyon
         if (event.is_mouse()) {
             std::lock_guard<std::mutex> lock(ui_state_.mutex);
             
             if (event.mouse().button == ftxui::Mouse::WheelDown) {
-                // Scroll down: içerik aşağı kayar (Chrome gibi)
-                // Hassasiyet düşürüldü: 3 yerine 1 (daha yavaş scroll)
                 ui_state_.scroll_offset += 1;
                 screen.PostEvent(ftxui::Event::Custom);
                 return true;
             } else if (event.mouse().button == ftxui::Mouse::WheelUp) {
-                // Scroll up: içerik yukarı kayar (Chrome gibi)
-                // Hassasiyet düşürüldü: 3 yerine 1 (daha yavaş scroll)
                 ui_state_.scroll_offset = std::max(0, ui_state_.scroll_offset - 1);
                 screen.PostEvent(ftxui::Event::Custom);
                 return true;
@@ -278,15 +263,14 @@ ftxui::Component ArbitrageUI::buildComponent() {
         
         // Header
         auto header = hbox({
-            text("Arbitrage Detection Monitor") | bold | center,
-        }) | border | color(Color::Cyan);
+            text("Arbitrage Detection Monitor") | bold | center | color(Color::Cyan),
+        }) | border | color(Color::Cyan) | size(ftxui::WIDTH, ftxui::EQUAL, 900) | size(ftxui::HEIGHT, ftxui::GREATER_THAN, 8);
         
         // Market Prices Section - Show all symbols
         Elements price_boxes;
         price_boxes.push_back(text("Market Prices") | bold | color(Color::Yellow));
         price_boxes.push_back(separator());
         
-        // Group symbols: ARB pairs first, then cross pairs
         auto all_symbols = getAllSymbols();
         Elements arb_pairs_row;
         Elements cross_pairs_row;
@@ -296,18 +280,16 @@ ftxui::Component ArbitrageUI::buildComponent() {
             if (it != state.market_data.end()) {
                 const auto& data = it->second;
                 
-                // Check if data is stale (3 seconds threshold)
                 bool is_stale = data.isStale(3000);
                 bool show_as_active = data.has_data && !is_stale;
                 
                 std::string status_text = show_as_active ? "●" : "○";
                 
-                // Cross pair'ler için precision ayarla (BTC/USDT gibi büyük sayılar için)
-                int precision = 8; // Default precision
+                int precision = 8;
                 if (symbol.find("BTC/") == 0 || symbol.find("ETH/") == 0) {
-                    precision = 2; // BTC ve ETH için 2 decimal
+                    precision = 2;
                 } else if (symbol.find("EUR/") == 0 || symbol.find("TRY/") == 0) {
-                    precision = 4; // EUR ve TRY için 4 decimal
+                    precision = 4;
                 }
                 
                 Element price_box = vbox({
@@ -373,6 +355,7 @@ ftxui::Component ArbitrageUI::buildComponent() {
         Element opportunity_section;
         if (state.has_opportunity) {
             auto profit_color = state.profit_percent > 0.5 ? Color::Green : Color::Yellow;
+            std::string max_tradable_text = "Max Tradable: " + formatPrice(state.max_tradable_amount, 2) + " " + state.max_tradable_currency;
             opportunity_section = vbox({
                 text("ARBITRAGE OPPORTUNITY DETECTED!") | bold | color(Color::Red),
                 separator(),
@@ -380,12 +363,13 @@ ftxui::Component ArbitrageUI::buildComponent() {
                 text("Direction: " + std::to_string(state.direction)),
                 text("Trade Sequence: " + state.trade_sequence),
                 text("Profit: " + formatPrice(state.profit_percent, 4) + "%") | color(profit_color) | bold,
-            }) | border | color(Color::Red) | size(ftxui::WIDTH, ftxui::EQUAL, 900) | size(ftxui::HEIGHT, ftxui::GREATER_THAN, 8);
+                text(max_tradable_text) | color(Color::Cyan),
+            }) | border | color(Color::Red) | size(ftxui::WIDTH, ftxui::EQUAL, 900) | size(ftxui::HEIGHT, ftxui::GREATER_THAN, 15);
         } else {
             opportunity_section = vbox({
                 text("No arbitrage opportunity") | dim,
                 text("(Threshold: 0.10%)") | dim,
-            }) | border | size(ftxui::WIDTH, ftxui::EQUAL, 900) | size(ftxui::HEIGHT, ftxui::GREATER_THAN, 8);
+            }) | border | size(ftxui::WIDTH, ftxui::EQUAL, 900) | size(ftxui::HEIGHT, ftxui::GREATER_THAN, 15);
         }
         
         // Route Status Section
@@ -474,28 +458,20 @@ ftxui::Component ArbitrageUI::buildComponent() {
         content_elements.push_back(separator());
         content_elements.push_back(footer);
         
-        // Main content with manual scroll
-        // scroll_offset artınca tüm sayfa aşağı kayar (container'ların içeriği sabit kalır)
-        // scroll_offset kadar içeriği atla, geri kalanını göster
         Elements scrolled_elements;
         if (state.scroll_offset > 0 && state.scroll_offset < static_cast<int>(content_elements.size())) {
-            // scroll_offset kadar içeriği atla, geri kalanını göster
             scrolled_elements.insert(scrolled_elements.end(), 
                 content_elements.begin() + state.scroll_offset, 
                 content_elements.end());
         } else if (state.scroll_offset >= static_cast<int>(content_elements.size())) {
-            // Tüm içerik kaydırıldı, sadece son elementi göster
             if (!content_elements.empty()) {
                 scrolled_elements.push_back(content_elements.back());
             }
         } else {
-            // scroll_offset = 0, tüm içeriği göster
             scrolled_elements = content_elements;
         }
         
         auto main_content = vbox(scrolled_elements);
-        
-        // yframe kaldırıldı - manuel scroll kullanıyoruz
         return main_content;
     });
     
