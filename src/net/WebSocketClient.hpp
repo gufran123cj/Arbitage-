@@ -14,9 +14,12 @@ namespace beast = boost::beast;
 namespace ws   = beast::websocket;
 using tcp = net::ip::tcp;
 
+// Forward declaration
+class MarketState;
+
 class WebSocketClient {
 public:
-    explicit WebSocketClient(const std::string& stream);
+    explicit WebSocketClient(const std::string& stream, MarketState& market_state);
     ~WebSocketClient();
 
     void start();
@@ -26,6 +29,7 @@ private:
     void run();
 
     std::string stream_;
+    MarketState& market_state_;
     std::atomic<bool> running_{false};
     std::thread thread_;
 };

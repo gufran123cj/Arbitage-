@@ -48,12 +48,31 @@ if(NOT OpenSSL_FOUND)
     message(FATAL_ERROR "OpenSSL gerekli! Lutfen yukleyin.")
 endif()
 
+# Find FTXUI
+find_package(ftxui QUIET)
+if(NOT ftxui_FOUND)
+    message(STATUS "")
+    message(STATUS "==========================================")
+    message(STATUS "FTXUI bulunamadı!")
+    message(STATUS "==========================================")
+    message(STATUS "")
+    message(STATUS "OTOMATIK YUKLEME ICIN:")
+    message(STATUS "  vcpkg install ftxui")
+    message(STATUS "")
+    message(FATAL_ERROR "FTXUI gerekli! Lutfen yukleyin.")
+endif()
+
 message(STATUS "Boost bulundu: ${Boost_VERSION}")
 message(STATUS "OpenSSL bulundu: ${OPENSSL_VERSION}")
+message(STATUS "FTXUI bulundu")
 
 file(GLOB NET_SOURCES "src/net/*.cpp")
+file(GLOB CORE_SOURCES "src/core/*.cpp")
+file(GLOB UTIL_SOURCES "src/util/*.cpp")
+file(GLOB UI_SOURCES "src/ui/*.cpp")
+file(GLOB CONFIG_SOURCES "src/config/*.cpp")
 file(GLOB MAIN_SOURCES "main.cpp")
-set(SOURCES ${NET_SOURCES} ${MAIN_SOURCES})
+set(SOURCES ${NET_SOURCES} ${CORE_SOURCES} ${UTIL_SOURCES} ${UI_SOURCES} ${CONFIG_SOURCES} ${MAIN_SOURCES})
 
 add_executable(arb_engine ${SOURCES})
 
@@ -66,6 +85,9 @@ target_link_libraries(arb_engine PRIVATE
     ${Boost_LIBRARIES}
     OpenSSL::SSL
     OpenSSL::Crypto
+    ftxui::screen
+    ftxui::dom
+    ftxui::component
 )
 
 if(MSVC)
